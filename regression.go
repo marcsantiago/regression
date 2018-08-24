@@ -136,7 +136,7 @@ func (r *Regression) applyCrosses() {
 // and whether or not the training has already been completed.
 // Once the above checks have passed feature crosses are applied if any
 // and the model is trained using QR decomposition.
-func (r *Regression) Run() error {
+func (r *Regression) Run(logOutput bool) error {
 	if !r.initialised {
 		return ErrNotEnoughData
 	}
@@ -178,9 +178,8 @@ func (r *Regression) Run() error {
 	reg := qr.RTo(nil)
 
 	qtr := q.T()
-	qtrd := mat.DenseCopyOf(qtr)
 	qty := new(mat.Dense)
-	qty.Mul(qtrd, observed)
+	qty.Mul(qtr, observed)
 
 	c := make([]float64, n)
 	for i := n - 1; i >= 0; i-- {
@@ -195,14 +194,16 @@ func (r *Regression) Run() error {
 	r.coeff = make(map[int]float64, numOfvars)
 	for i, val := range c {
 		r.coeff[i] = val
-		if i == 0 {
-			r.Formula = fmt.Sprintf("Predicted = %.4f", val)
-		} else {
-			r.Formula += fmt.Sprintf(" + %v*%.4f", r.GetVar(i-1), val)
+		if logOutput {
+			if i == 0 {
+				r.Formula = fmt.Sprintf("Predicted = %.4f", val)
+			} else {
+				r.Formula += fmt.Sprintf(" + %v*%.4f", r.GetVar(i-1), val)
+			}
 		}
 	}
 
-	r.calcPredicted()
+	r.calcPredicted(logOutput)
 	r.calcVariance()
 	r.calcR2()
 	return nil
@@ -216,20 +217,21 @@ func (r *Regression) Coeff(i int) float64 {
 	return r.coeff[i]
 }
 
-func (r *Regression) calcPredicted() string {
+func (r *Regression) calcPredicted(logOutput bool) string {
 	observations := len(r.data)
 	var predicted float64
-	var output string
+	var output strings.Builder
 	for i := 0; i < observations; i++ {
 		r.data[i].Predicted, _ = r.Predict(r.data[i].Variables)
 		r.data[i].Error = r.data[i].Predicted - r.data[i].Observed
-
-		output += fmt.Sprintf("%v. observed = %v, Predicted = %v, Error = %v", i, r.data[i].Observed, predicted, r.data[i].Error)
+		if logOutput {
+			output.WriteString(fmt.Sprintf("%d. observed = %.4f, Predicted = %.4f, Error = %.4f", i, r.data[i].Observed, predicted, r.data[i].Error))
+		}
 	}
-	return output
+	return output.String()
 }
 
-func (r *Regression) calcVariance() string {
+func (r *Regression) calcVariance() (int, float64, float64) {
 	observations := len(r.data)
 	var obtotal, prtotal, obvar, prvar float64
 	for i := 0; i < observations; i++ {
@@ -245,30 +247,32 @@ func (r *Regression) calcVariance() string {
 	}
 	r.Varianceobserved = obvar / float64(observations)
 	r.VariancePredicted = prvar / float64(observations)
-	return fmt.Sprintf("N = %v\nVariance observed = %v\nVariance Predicted = %v\n", observations, r.Varianceobserved, r.VariancePredicted)
+	return observations, r.Varianceobserved, r.VariancePredicted
 }
 
-func (r *Regression) calcR2() string {
+func (r *Regression) calcR2() {
 	r.R2 = r.VariancePredicted / r.Varianceobserved
-	return fmt.Sprintf("R2 = %.2f", r.R2)
+	return
 }
 
-func (r *Regression) calcResiduals() string {
-	str := fmt.Sprintf("Residuals:\nobserved|\tPredicted|\tResidual\n")
+func (r *Regression) printResiduals() string {
+	var str strings.Builder
+	str.WriteString(fmt.Sprintf("Residuals:\nobserved|\tPredicted|\tResidual\n"))
 	for _, d := range r.data {
-		str += fmt.Sprintf("%.2f|\t%.2f|\t%.2f\n", d.Observed, d.Predicted, d.Observed-d.Predicted)
+		str.WriteString(fmt.Sprintf("%.4f|\t%.4f|\t%.4f\n", d.Observed, d.Predicted, d.Observed-d.Predicted))
 	}
-	str += "\n"
-	return str
+	str.WriteString("\n")
+	return str.String()
 }
 
 // String satisfies the stringer interface to display a dataPoint as a string.
 func (d *dataPoint) String() string {
-	str := fmt.Sprintf("%.2f", d.Observed)
+	var str strings.Builder
+	str.WriteString(fmt.Sprintf("%.4f", d.Observed))
 	for _, v := range d.Variables {
-		str += fmt.Sprintf("|\t%.2f", v)
+		str.WriteString(fmt.Sprintf("|\t%.2f", v))
 	}
-	return str
+	return str.String()
 }
 
 // String satisfies the stringer interface to display a regression as a string.
@@ -276,18 +280,20 @@ func (r *Regression) String() string {
 	if !r.initialised {
 		return ErrNotEnoughData.Error()
 	}
-	str := fmt.Sprintf("%v", r.GetObserved())
+	var str strings.Builder
+	str.WriteString(r.GetObserved())
 	for i := 0; i < len(r.names.vars); i++ {
-		str += fmt.Sprintf("|\t%v", r.GetVar(i))
+		str.WriteString(fmt.Sprintf("|\t%s", r.GetVar(i)))
 	}
-	str += "\n"
+
+	str.WriteString("\n")
 	for _, d := range r.data {
-		str += fmt.Sprintf("%v\n", d)
+		str.WriteString(fmt.Sprintf("%v\n", d))
 	}
-	fmt.Println(r.calcResiduals())
-	str += fmt.Sprintf("\nN = %v\nVariance observed = %v\nVariance Predicted = %v", len(r.data), r.Varianceobserved, r.VariancePredicted)
-	str += fmt.Sprintf("\nR2 = %v\n", r.R2)
-	return str
+	fmt.Sprintf(r.printResiduals())
+	str.WriteString(fmt.Sprintf("\nN = %d\nVariance observed = %.4f\nVariance Predicted = %.4f", len(r.data), r.Varianceobserved, r.VariancePredicted))
+	str.WriteString(fmt.Sprintf("\nR2 = %.4f\n", r.R2))
+	return str.String()
 }
 
 // MakeDataPoints makes a `[]*dataPoint` from a `[][]float64`. The expected fomat for the input is a row-major [][]float64.

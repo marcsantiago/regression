@@ -33,7 +33,7 @@ func TestRun(t *testing.T) {
 		DataPoint(21.7, []float64{595000, 20.2, 8.4}),
 		DataPoint(25.7, []float64{3353000, 16.9, 6.7}),
 	)
-	r.Run()
+	r.Run(false)
 
 	fmt.Printf("Regression formula:\n%v\n", r.Formula)
 	fmt.Printf("Regression:\n%s\n", r)
@@ -68,7 +68,7 @@ func TestCrossApply(t *testing.T) {
 	)
 	r.AddCross(PowCross(0, 2))
 	r.AddCross(PowCross(0, 7))
-	err := r.Run()
+	err := r.Run(false)
 	if err != nil {
 		t.Error(err)
 	}
