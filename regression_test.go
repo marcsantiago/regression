@@ -3,6 +3,8 @@ package regression
 import (
 	"fmt"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestRun(t *testing.T) {
@@ -12,26 +14,26 @@ func TestRun(t *testing.T) {
 	r.SetVar(1, "Percent with incomes below $5000")
 	r.SetVar(2, "Percent unemployed")
 	r.Train(
-		DataPoint(11.2, []float64{587000, 16.5, 6.2}),
-		DataPoint(13.4, []float64{643000, 20.5, 6.4}),
-		DataPoint(40.7, []float64{635000, 26.3, 9.3}),
-		DataPoint(5.3, []float64{692000, 16.5, 5.3}),
-		DataPoint(24.8, []float64{1248000, 19.2, 7.3}),
-		DataPoint(12.7, []float64{643000, 16.5, 5.9}),
-		DataPoint(20.9, []float64{1964000, 20.2, 6.4}),
-		DataPoint(35.7, []float64{1531000, 21.3, 7.6}),
-		DataPoint(8.7, []float64{713000, 17.2, 4.9}),
-		DataPoint(9.6, []float64{749000, 14.3, 6.4}),
-		DataPoint(14.5, []float64{7895000, 18.1, 6}),
-		DataPoint(26.9, []float64{762000, 23.1, 7.4}),
-		DataPoint(15.7, []float64{2793000, 19.1, 5.8}),
-		DataPoint(36.2, []float64{741000, 24.7, 8.6}),
-		DataPoint(18.1, []float64{625000, 18.6, 6.5}),
-		DataPoint(28.9, []float64{854000, 24.9, 8.3}),
-		DataPoint(14.9, []float64{716000, 17.9, 6.7}),
-		DataPoint(25.8, []float64{921000, 22.4, 8.6}),
-		DataPoint(21.7, []float64{595000, 20.2, 8.4}),
-		DataPoint(25.7, []float64{3353000, 16.9, 6.7}),
+		DataPointWrapper(11.2, []float64{587000, 16.5, 6.2}),
+		DataPointWrapper(13.4, []float64{643000, 20.5, 6.4}),
+		DataPointWrapper(40.7, []float64{635000, 26.3, 9.3}),
+		DataPointWrapper(5.3, []float64{692000, 16.5, 5.3}),
+		DataPointWrapper(24.8, []float64{1248000, 19.2, 7.3}),
+		DataPointWrapper(12.7, []float64{643000, 16.5, 5.9}),
+		DataPointWrapper(20.9, []float64{1964000, 20.2, 6.4}),
+		DataPointWrapper(35.7, []float64{1531000, 21.3, 7.6}),
+		DataPointWrapper(8.7, []float64{713000, 17.2, 4.9}),
+		DataPointWrapper(9.6, []float64{749000, 14.3, 6.4}),
+		DataPointWrapper(14.5, []float64{7895000, 18.1, 6}),
+		DataPointWrapper(26.9, []float64{762000, 23.1, 7.4}),
+		DataPointWrapper(15.7, []float64{2793000, 19.1, 5.8}),
+		DataPointWrapper(36.2, []float64{741000, 24.7, 8.6}),
+		DataPointWrapper(18.1, []float64{625000, 18.6, 6.5}),
+		DataPointWrapper(28.9, []float64{854000, 24.9, 8.3}),
+		DataPointWrapper(14.9, []float64{716000, 17.9, 6.7}),
+		DataPointWrapper(25.8, []float64{921000, 22.4, 8.6}),
+		DataPointWrapper(21.7, []float64{595000, 20.2, 8.4}),
+		DataPointWrapper(25.7, []float64{3353000, 16.9, 6.7}),
 	)
 	r.Run(false)
 
@@ -39,7 +41,7 @@ func TestRun(t *testing.T) {
 	fmt.Printf("Regression:\n%s\n", r)
 
 	// All vars are known to positively correlate with the murder rate
-	for i, c := range r.coeff {
+	for i, c := range r.CoeffMap {
 		if i == 0 {
 			// This is the offset and not a coeff
 			continue
@@ -60,11 +62,11 @@ func TestCrossApply(t *testing.T) {
 	r.SetObserved("Input-Squared plus Input")
 	r.SetVar(0, "Input")
 	r.Train(
-		DataPoint(6, []float64{2}),
-		DataPoint(20, []float64{4}),
-		DataPoint(30, []float64{5}),
-		DataPoint(72, []float64{8}),
-		DataPoint(156, []float64{12}),
+		DataPointWrapper(6, []float64{2}),
+		DataPointWrapper(20, []float64{4}),
+		DataPointWrapper(30, []float64{5}),
+		DataPointWrapper(72, []float64{8}),
+		DataPointWrapper(156, []float64{12}),
 	)
 	r.AddCross(PowCross(0, 2))
 	r.AddCross(PowCross(0, 7))
@@ -75,11 +77,11 @@ func TestCrossApply(t *testing.T) {
 
 	fmt.Printf("Regression formula:\n%v\n", r.Formula)
 	fmt.Printf("Regression:\n%s\n", r)
-	if r.names.vars[1] != "(Input)^2" {
+	if r.Names.Vars[1] != "(Input)^2" {
 		t.Error("Name incorrect")
 	}
 
-	for i, c := range r.coeff {
+	for i, c := range r.CoeffMap {
 		if i == 0 {
 			// This is the offset and not a coeff
 			continue
@@ -153,6 +155,53 @@ func TestMakeDataPoints(t *testing.T) {
 		if dp.Observed != 4.0 {
 			t.Error("Expected observed to be the same as the index")
 		}
+	}
+
+}
+
+func TestSaveAndLoad(t *testing.T) {
+	r := new(Regression)
+	r.SetObserved("Murders per annum per 1,000,000 inhabitants")
+	r.SetVar(0, "Inhabitants")
+	r.SetVar(1, "Percent with incomes below $5000")
+	r.SetVar(2, "Percent unemployed")
+	r.Train(
+		DataPointWrapper(11.2, []float64{587000, 16.5, 6.2}),
+		DataPointWrapper(13.4, []float64{643000, 20.5, 6.4}),
+		DataPointWrapper(40.7, []float64{635000, 26.3, 9.3}),
+		DataPointWrapper(5.3, []float64{692000, 16.5, 5.3}),
+		DataPointWrapper(24.8, []float64{1248000, 19.2, 7.3}),
+		DataPointWrapper(12.7, []float64{643000, 16.5, 5.9}),
+		DataPointWrapper(20.9, []float64{1964000, 20.2, 6.4}),
+		DataPointWrapper(35.7, []float64{1531000, 21.3, 7.6}),
+		DataPointWrapper(8.7, []float64{713000, 17.2, 4.9}),
+		DataPointWrapper(9.6, []float64{749000, 14.3, 6.4}),
+		DataPointWrapper(14.5, []float64{7895000, 18.1, 6}),
+		DataPointWrapper(26.9, []float64{762000, 23.1, 7.4}),
+		DataPointWrapper(15.7, []float64{2793000, 19.1, 5.8}),
+		DataPointWrapper(36.2, []float64{741000, 24.7, 8.6}),
+		DataPointWrapper(18.1, []float64{625000, 18.6, 6.5}),
+		DataPointWrapper(28.9, []float64{854000, 24.9, 8.3}),
+		DataPointWrapper(14.9, []float64{716000, 17.9, 6.7}),
+		DataPointWrapper(25.8, []float64{921000, 22.4, 8.6}),
+		DataPointWrapper(21.7, []float64{595000, 20.2, 8.4}),
+		DataPointWrapper(25.7, []float64{3353000, 16.9, 6.7}),
+	)
+	r.Run(false)
+
+	savedData, err := r.Save()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newR := new(Regression)
+	err = newR.Load(savedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cmp.Equal(r, newR) {
+		t.Fatalf("Expected r and newR to be the same\nl: %+v\nnewL: %+v", r, newR)
 	}
 
 }
